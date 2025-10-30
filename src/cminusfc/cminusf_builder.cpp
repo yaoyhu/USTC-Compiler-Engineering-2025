@@ -140,15 +140,18 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
         scope.push(args[i]->get_name(), param_i);
     }
     node.compound_stmt->accept(*this);
-    if (builder->get_insert_block()->get_terminator() == nullptr) 
-    {
-        if (context.func->get_return_type()->is_void_type())
+
+    // 检查当前基本块是否已经有终结指令
+    if (not builder->get_insert_block()->is_terminated()) {
+        if (context.func->get_return_type()->is_void_type()) {
             builder->create_void_ret();
-        else if (context.func->get_return_type()->is_float_type())
-            builder->create_ret(CONST_FP(0.));
-        else
+        } else if (context.func->get_return_type()->is_integer_type()) {
             builder->create_ret(CONST_INT(0));
+        } else {
+            builder->create_ret(CONST_FP(0.));
+        }
     }
+
     scope.exit();
     return nullptr;
 }
