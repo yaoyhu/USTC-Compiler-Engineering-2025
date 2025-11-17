@@ -40,40 +40,110 @@ bool DeadCode::clear_basic_blocks(Function *func) {
 
 void DeadCode::mark(Function *func) {
     // TODO
-    
+    marked.clear();
+    work_list.clear();
+
+    for (auto &bb : func->get_basic_blocks()) {
+        for (auto &ins : bb.get_instructions()) {
+            auto inst = &ins;
+            if (!is_critical(inst)) {
+                continue;
+            }
+            auto it = marked.find(inst);
+            if (it == marked.end() || it->second == false) {
+                marked[inst] = true;
+                work_list.push_back(inst);
+            }
+        }
+    }
+
+    while (!work_list.empty()) {
+        auto inst = work_list.front();
+        work_list.pop_front();
+        mark(inst);
+    }
 }
 
 void DeadCode::mark(Instruction *ins) {
     // TODO
+    for (auto operand : ins->get_operands()) {
+        auto inst = dynamic_cast<Instruction *>(operand);
+        if (inst == nullptr) {
+            continue;
+        }
+        auto it = marked.find(inst);
+        if (it == marked.end() || it->second == false) {
+            marked[inst] = true;
+            work_list.push_back(inst);
+        }
+    }
 }
 
 bool DeadCode::sweep(Function *func) {
     // TODO: 删除无用指令
     // 提示：
-    // 1. 遍历函数的基本块，删除所有标记为true的指令
-    // 2. 删除指令后，可能会导致其他指令的操作数变为无用，因此需要再次遍历函数的基本块
-    // 3. 如果删除了指令，返回true，否则返回false
-    // 4. 注意：删除指令时，需要先删除操作数的引用，然后再删除指令本身
     // 5. 删除指令时，需要注意指令的顺序，不能删除正在遍历的指令
     std::unordered_set<Instruction *> wait_del{};
 
-    // 1. 收集所有未被标记的指令
- 
+    // 1. 遍历函数的基本块，删除所有标记为true的指令
+    for (auto &bb : func->get_basic_blocks()) {
+        for (auto &ins : bb.get_instructions()) {
+            auto inst = &ins;
+            auto it = marked.find(inst);
+            if (it != marked.end() && it->second) {
+                continue;
+            }
+            wait_del.insert(inst);
+        }
+    }
 
-    // 2. 执行删除
-  
-    
-    return not wait_del.empty(); // changed
+    // 3. 如果删除了指令，返回true，否则返回false
+    if (wait_del.empty()) {
+        return false;
+    }
+
+    // 2. 删除指令后，可能会导致其他指令的操作数变为无用，因此需要再次遍历函数的基本块
+    for (auto inst : wait_del) {
+        // 4. 注意：删除指令时，需要先删除操作数的引用，然后再删除指令本身
+        inst->remove_all_operands();
+        if (auto parent = inst->get_parent()) {
+            parent->erase_instr(inst);
+        }
+        ++ins_count;
+    }
+
+    return true; // changed
 }
 
 bool DeadCode::is_critical(Instruction *ins) {
     // TODO: 判断指令是否是无用指令
     // 提示：
     // 1. 如果是函数调用，且函数是纯函数，则无用
+    if (ins->is_call()) {
+        auto call_inst = dynamic_cast<CallInst *>(ins);
+        auto func = dynamic_cast<Function *>(call_inst->get_operand(0));
+        if (func == nullptr) {
+            return true;
+        }
+        return !func_info->is_pure_function(func);
+    }
+
     // 2. 如果是无用的分支指令，则无用
+    if (ins->is_br()) {
+        return true;
+    }
+
     // 3. 如果是无用的返回指令，则无用
+    if (ins->is_ret()) {
+        return true;
+    }
+
     // 4. 如果是无用的存储指令，则无用
-    
+    if (ins->is_store()) {
+        return true;
+    }
+
+    return false;
 }
 
 void DeadCode::sweep_globally() {
