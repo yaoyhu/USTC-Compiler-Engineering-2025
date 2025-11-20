@@ -129,17 +129,37 @@ void FunctionInline::inline_function(Instruction *call, Function *origin) {
             // TODO: 处理多个返回值的情况
             // 提示：
             // 1. 需要创建一个新的基本块(bb_phi)用于存放phi指令
+            auto bb_phi =
+                BasicBlock::create(call_func->get_parent(), "", call_func);
+
+            // 3. 创建phi指令：
+            //    - 设置正确的返回类型
+            //    - 为每个返回路径添加phi对
+            auto phi = PhiInst::create_phi(origin->get_return_type(), bb_phi);
+
             // 2. 对于每个返回指令：
             //    - 记录其所在的基本块
             //    - 移除返回指令
             //    - 添加跳转到bb_phi的分支指令
-            // 3. 创建phi指令：
-            //    - 设置正确的返回类型
-            //    - 为每个返回路径添加phi对
+            for (auto ret : ret_list) {
+                auto ret_val_op = ret->get_operand(0);
+                auto ret_bb = ret->get_parent();
+                ret_bb->remove_instr(ret);
+                phi->add_phi_pair_operand(ret_val_op, ret_bb);
+                BranchInst::create_br(bb_phi, ret_bb);
+            }
+
             // 4. 将phi指令添加到bb_phi
+            bb_phi->add_instr_begin(phi);
+
             // 5. 设置返回值
+            ret_val = phi;
+
             // 6. 将bb_phi添加到基本块列表
+            bb_list.push_back(bb_phi);
+
             // 7. 添加从bb_phi到bb_new的跳转
+            BranchInst::create_br(bb_new, bb_phi);
         }
     } else {
         assert(ret_void_bbs.size() > 0);
